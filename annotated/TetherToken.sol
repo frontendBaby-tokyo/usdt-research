@@ -284,6 +284,22 @@ contract BlackList is Ownable, BasicToken {
     
     function addBlackList (address _evilUser) public onlyOwner {
         isBlackListed[_evilUser] = true;
+        /*
+         * Solidity 0.4.17 の古いイベント記法。現在の Solidity では
+         * emit AddedBlackList(_evilUser); と書く。
+         *
+         * addBlackList のトランザクション自体からも呼び出しは追えるが、
+         * このイベントをレシートのログに残すことで、監視ツールや
+         * インデクサーが「ブラックリストへの追加」として検索・購読しやすくなる。
+         *
+         * 実際に登録するのは上の mapping 更新であり、イベントはログ出力のみ。
+         * また _user は indexed ではないため、イベント名やコントラクトで絞り込めるが、
+         * ログのトピックだけで特定のユーザーアドレスに絞り込むことはできない。
+
+         * 参考：
+         https://docs.soliditylang.org/ja/latest/contracts.html#events
+         https://tether.to/en/legal/
+         */
         AddedBlackList(_evilUser);
     }
 
