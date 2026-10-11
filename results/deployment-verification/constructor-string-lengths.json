@@ -1,0 +1,16 @@
+{
+  "stringLengths": [
+    {
+      "name": "_name",
+      "offsetBytes": 128,
+      "lengthWordIndex": 4,
+      "lengthBytes": 10
+    },
+    {
+      "name": "_symbol",
+      "offsetBytes": 192,
+      "lengthWordIndex": 6,
+      "lengthBytes": 4
+    }
+  ]
+}

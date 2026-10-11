@@ -1,0 +1,14 @@
+{
+  "stringOffsets": [
+    {
+      "wordIndex": 1,
+      "name": "_name",
+      "offsetBytes": 128
+    },
+    {
+      "wordIndex": 2,
+      "name": "_symbol",
+      "offsetBytes": 192
+    }
+  ]
+}

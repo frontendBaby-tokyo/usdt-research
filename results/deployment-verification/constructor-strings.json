@@ -1,0 +1,16 @@
+{
+  "strings": [
+    {
+      "name": "_name",
+      "offsetBytes": 128,
+      "lengthBytes": 10,
+      "value": "Tether USD"
+    },
+    {
+      "name": "_symbol",
+      "offsetBytes": 192,
+      "lengthBytes": 4,
+      "value": "USDT"
+    }
+  ]
+}

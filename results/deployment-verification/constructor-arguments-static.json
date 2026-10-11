@@ -1,0 +1,16 @@
+{
+  "decodedArguments": [
+    {
+      "wordIndex": 0,
+      "name": "_initialSupply",
+      "type": "uint256",
+      "value": "100000000000"
+    },
+    {
+      "wordIndex": 3,
+      "name": "_decimals",
+      "type": "uint256",
+      "value": "6"
+    }
+  ]
+}
