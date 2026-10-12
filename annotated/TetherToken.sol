@@ -114,39 +114,63 @@ contract BasicToken is Ownable, ERC20Basic {
     uint public basisPointsRate = 0;
     uint public maximumFee = 0;
 
-    /**
-    * @dev Fix for the ERC20 short address attack.
-    */
+    /*
+     * modifier は Solidity の機能（構文）で、関数の実行前後に共通の処理や条件を加える仕組み。
+     * modifier 自体は開発者がコントラクト内で定義できる。onlyOwner や onlyPayloadSize も
+     * Solidity 組み込みの固定一覧から使うものではなく、このコード内で定義された独自 modifier。
+     * 定義中の _; は、修飾された関数本体を実行する位置を表す。
+     *
+     * これは古い Solidity で使われた short address attack 対策。
+     * 呼び出し側が address 引数をABIの32バイト枠より短くエンコードすると、
+     * 後続の uint 引数の読み取り位置がずれ、送金額が意図と異なる値として解釈される
+     * おそれがあった。この関数の引数は32バイト枠が2つ（address と uint）なので、
+     * セレクター4バイトを含む最低68バイトがあるか確認する。
+     * 正しいABI形式で呼ぶ通常のクライアントでは引数は所定の長さに埋められる。
+     * このチェックは認可や宛先の妥当性を検証するものではない。
+     * 詳細: https://ethereum.org/developers/docs/transactions/#the-data-field
+     */
     modifier onlyPayloadSize(uint size) {
         require(!(msg.data.length < size + 4));
         _;
     }
 
-    /**
-    * @dev transfer token for a specified address
-    * @param _to The address to transfer to.
-    * @param _value The amount to be transferred.
-    */
+    /*
+     * 指定した宛先へトークンを送る。
+     *
+     * onlyPayloadSize(2 * 32) は、引数 _to と _value がそれぞれABI上32バイトで
+     * 渡されていることを確認する。modifier内の _ は、このチェック後に関数本体を実行する印。
+     * 関数セレクターの4バイトも含め、msg.data は最低68バイト必要。
+     */
     function transfer(address _to, uint _value) public onlyPayloadSize(2 * 32) {
+        // 手数料を basisPointsRate / 10000 の割合で計算し、maximumFee を上限にする。
+        // 現在の初期値は両方0なので、通常は fee は0。
         uint fee = (_value.mul(basisPointsRate)).div(10000);
         if (fee > maximumFee) {
             fee = maximumFee;
         }
+
+        // 送金元からは手数料込みの _value を引き、宛先には手数料を除いた額を渡す。
         uint sendAmount = _value.sub(fee);
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(sendAmount);
+
+        // 手数料がある場合は owner に加算し、その分の Transfer ログを記録する。
         if (fee > 0) {
             balances[owner] = balances[owner].add(fee);
             Transfer(msg.sender, owner, fee);
         }
+
+        // 宛先への送金をログに記録する。残高不足などで SafeMath が失敗すれば、
+        // トランザクション全体が取り消され、残高更新もログも残らない。
         Transfer(msg.sender, _to, sendAmount);
     }
 
-    /**
-    * @dev Gets the balance of the specified address.
-    * @param _owner The address to query the the balance of.
-    * @return An uint representing the amount owned by the passed address.
-    */
+    /*
+     * 指定アドレスの残高を返す読み取り専用関数。
+     * constant はこの古い Solidity 版での読み取り専用指定で、後の Solidity の view に相当する。
+     * 状態を変更できず、外部から eth_call で読む場合はトランザクション送信もガス支払いも不要。
+     * （コントラクト内から呼び出す場合は、その実行に必要なガスは呼び出し元の処理で消費される。）
+     */
     function balanceOf(address _owner) public constant returns (uint balance) {
         return balances[_owner];
     }
@@ -162,29 +186,44 @@ contract BasicToken is Ownable, ERC20Basic {
  */
 contract StandardToken is BasicToken, ERC20 {
 
+    /*
+     * 所有者が spender（利用者）に使うことを許可した残高を記録する二重mapping。
+     * allowed[所有者アドレス][spenderアドレス] が、spenderに残された利用可能額。
+     * 所有者が approve(spender, 金額) を呼ぶと設定され、spenderが transferFrom を
+     * 実行すると、通常は送金額分が減る。これは所有者の残高 balances とは別の許可枠。
+     */
     mapping (address => mapping (address => uint)) public allowed;
 
     uint public constant MAX_UINT = 2**256 - 1;
 
-    /**
-    * @dev Transfer tokens from one address to another
-    * @param _from address The address which you want to send tokens from
-    * @param _to address The address which you want to transfer to
-    * @param _value uint the amount of tokens to be transferred
-    */
+    /*
+     * 呼び出し元（spender）が、事前に許可された範囲で _from の残高を _to へ送る。
+     * transfer と違い、msg.sender 自身の残高から送るとは限らない。
+     * 例: Aliceが取引所にapproveした後、取引所が
+     * transferFrom(Alice, Carol, 10) を呼ぶと、許可額とAliceの残高の範囲で送金する。
+     */
     function transferFrom(address _from, address _to, uint _value) public onlyPayloadSize(3 * 32) {
+        // _from が msg.sender（spender）に与えた、現在の許可残額を取得する。
         var _allowance = allowed[_from][msg.sender];
 
-        // Check is not needed because sub(_allowance, _value) will already throw if this condition is not met
-        // if (_value > _allowance) throw;
+        // 通常の許可額なら、下の SafeMath.sub が _value > _allowance の場合に失敗し、
+        // トランザクション全体を取り消す。MAX_UINT は無制限許可の慣例として扱い、減らさない。
 
         uint fee = (_value.mul(basisPointsRate)).div(10000);
         if (fee > maximumFee) {
             fee = maximumFee;
         }
+        /*
+         * MAX_UINT（uint の最大値）を「無制限の利用許可」として扱う慣例。
+         * 無制限許可なら送金のたびに残額を減らさず、それ以外は今回の送金額を差し引く。
+         * そのため、無制限許可を出した spender は、許可を別途変更するまで繰り返し transferFrom できる。
+         */
         if (_allowance < MAX_UINT) {
+            // 無制限許可でなければ、許可残額を減らす。
             allowed[_from][msg.sender] = _allowance.sub(_value);
         }
+
+        // transfer と同じ手数料計算。手数料は owner、残額は _to に加算する。
         uint sendAmount = _value.sub(fee);
         balances[_from] = balances[_from].sub(_value);
         balances[_to] = balances[_to].add(sendAmount);
@@ -324,6 +363,14 @@ contract BlackList is Ownable, BasicToken {
 
 }
 
+/*
+ * UpgradedStandardToken はコントラクト名であると同時に、コントラクト型としても使われる。
+ * Solidity公式ドキュメント「Contract Types」:
+ * https://docs.solidity.org/ja/latest/types.html#contract-types
+ * ここでは旧 TetherToken が新コントラクトを呼ぶためのインターフェースとして、
+ * 旧コントラクト経由で呼び出す関数の形（名前・引数）を宣言している。
+ * 関数本体はなく、実際の処理は upgradedAddress が指す新コントラクトに実装される。
+ */
 contract UpgradedStandardToken is StandardToken{
     // those methods are called by the legacy contract
     // and they must ensure msg.sender to be the contract address
@@ -386,8 +433,15 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     function transfer(address _to, uint _value) public whenNotPaused {
         require(!isBlackListed[msg.sender]);
         if (deprecated) {
+            /*
+             * upgradedAddress を UpgradedStandardToken 型として扱い、そこに実装された
+             * transferByLegacy を呼ぶ。これは新コントラクトを作る記述ではなく、
+             * アドレスにあるコントラクトをこの型の関数インターフェースで呼ぶためのキャスト。
+                * コントラクトは、 address 型との間で明示的に変換できる。address 型はコントラクトのアドレスを表すだけで、関数呼び出しはできない。
+             */
             return UpgradedStandardToken(upgradedAddress).transferByLegacy(msg.sender, _to, _value);
         } else {
+            // 親コントラクト側の transfer を呼ぶ。super は継承元のコントラクトを指す。ここでは BasicToken の transfer。
             return super.transfer(_to, _value);
         }
     }
