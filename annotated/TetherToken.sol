@@ -2,13 +2,52 @@
  *Submitted for verification at Etherscan.io on 2017-11-28
 */
 
-pragma solidity ^0.4.17;
+pragma solidity ^0.4.17; // https://docs.soliditylang.org/en/v0.4.18/
+
+/*
+ * TetherToken のデプロイ時に、このソースから確認できる初期化処理:
+ *
+ * 1. 継承元 Ownable のコンストラクタ Ownable() が実行され、owner に
+ *    作成時の呼び出し元 msg.sender を設定する。複数の継承経路があっても
+ *    同じ Ownable の初期化は一度だけ行われる。
+ * 2. TetherToken のコンストラクタが4つの引数を受け取り、_totalSupply に
+ *    _initialSupply、name に _name、symbol に _symbol、decimals に
+ *    _decimals を設定する。
+ * 3. TetherToken のコンストラクタ内において、balances[owner] に _initialSupply を設定し、初期供給量を最初の
+ *    owner に割り当てる。続いて deprecated を false に設定する。
+ *
+ * コンストラクタ本体とは別に、paused、basisPointsRate、maximumFee には
+ * ソース上で false または0が初期値として指定されている。未設定の状態変数は型の
+ * デフォルト値から始まる（例: upgradedAddress はゼロアドレス、
+ * allowed と isBlackListed の未設定要素はそれぞれ0とfalse）。
+ *
+ * 上記の値は、このソースだけから読める初期化の流れ。実際に渡された
+ * _initialSupply、_name、_symbol、_decimals の値は作成取引で確認する。
+ * SafeMath の各関数や送金関数は、デプロイ時に呼び出されない。
+ */
 
 /**
  * @title SafeMath
  * @dev Math operations with safety checks that throw on error
  */
+/*
+ * Solidity 0.4.18 の assert(condition) は、条件が true なら続行し、false なら
+ * 例外で実行を中止する。公式資料では、内部エラーや成立すべき条件の検査に使う。
+ * false のときは INVALID 命令 (0xfe) が実行され、呼び出し内の状態変更は
+ * 巻き戻され、その呼び出しに残っていた gas はすべて消費される。
+ * この SafeMath では、計算結果が成立すべき条件を満たすか確かめている。
+ * 公式資料: https://docs.soliditylang.org/en/v0.4.18/control-structures.html#error-handling-assert-require-revert-and-exceptions
+ */
 library SafeMath {
+    /*
+     * a と b を掛ける。a が0なら結果も0なので先に返し、後の c / a で
+     * ゼロ除算しないようにする。
+     * uint256 の最大値は 2^256 - 1。この時代の算術では、掛け算が上限を超えると
+     * 結果は 2^256 で割った余りに巻き戻る。例えば 2^255 * 2 は数学上は
+     * 2^256 だが、uint256 に残る値 c は0になる。
+     * 正しく計算できたなら c / a は元の b に戻る。上の例では 0 / 2^255 は0で
+     * b の2と一致しないため、assert が失敗して誤った結果を使わせない。
+     */
     function mul(uint256 a, uint256 b) internal pure returns (uint256) {
         if (a == 0) {
             return 0;
@@ -18,6 +57,10 @@ library SafeMath {
         return c;
     }
 
+    /*
+     * a を b で割り、uint256 の整数商を返す（小数部分は切り捨て）。
+     * b が0の場合、除算自体が失敗するので追加の assert は置いていない。
+     */
     function div(uint256 a, uint256 b) internal pure returns (uint256) {
         // assert(b > 0); // Solidity automatically throws when dividing by 0
         uint256 c = a / b;
@@ -25,11 +68,19 @@ library SafeMath {
         return c;
     }
 
+    /*
+     * a から b を引く。b が a より大きいと uint256 の値が下限を越えて
+     * 巻き戻るため、計算前に assert で拒否する。
+     */
     function sub(uint256 a, uint256 b) internal pure returns (uint256) {
         assert(b <= a);
         return a - b;
     }
 
+    /*
+     * a と b を足す。結果 c が a より小さければ uint256 の上限を超えて
+     * 巻き戻ったと判断し、assert で失敗させる。
+     */
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
         uint256 c = a + b;
         assert(c >= a);
@@ -49,6 +100,13 @@ contract Ownable {
       * @dev The Ownable constructor sets the original `owner` of the contract to the sender
       * account.
       */
+    /*
+     * Solidity 0.4 系では、コントラクトと同名の Ownable() がコンストラクタ。
+     * TetherToken のデプロイ時に継承元のこの処理が実行され、作成を呼び出した
+     * アドレス（msg.sender）が最初の管理者 owner に設定される。
+     * owner は onlyOwner による管理者操作の制限や、初期供給量の割り当てに使われる。
+     * デプロイ後に通常の関数として呼び直すことはできない。
+     */
     function Ownable() public {
         owner = msg.sender;
     }
@@ -78,6 +136,27 @@ contract Ownable {
  * @dev Simpler version of ERC20 interface
  * @dev see https://github.com/ethereum/EIPs/issues/20
  */
+/*
+ * 末尾が ; の関数は、名前・引数・戻り値だけを示す宣言で、処理本体はない。
+ * Solidity 0.4.18 では、未実装の関数を持つ contract は抽象コントラクトとなり、
+ * 単体ではデプロイできない。継承先で未実装の関数をすべて実装すれば利用できる。
+ * 公式資料: https://docs.soliditylang.org/en/v0.4.18/contracts.html#abstract-contracts
+ *
+ * ERC20Basic は transfer と balanceOf を宣言し、BasicToken が実装する。
+ * totalSupply はさらに先の TetherToken が実装するため、BasicToken もこの時点では
+ * 抽象コントラクト。_totalSupply の public getter と totalSupply() は別の関数。
+ *
+ * 名前に interface とあるが、これは interface キーワードによる定義ではない。
+ * 状態変数 _totalSupply を持つため、同バージョンの厳密な interface の条件にも
+ * 合致しない。ここでは関数の約束を示す抽象コントラクトとして使われる。
+ * 公式資料: https://docs.soliditylang.org/en/v0.4.18/contracts.html#interfaces
+ *
+ * ERC-20 を実装するために、このような抽象コントラクトへ分けることは必須ではない。
+ * TetherToken に最初から関数の本体をまとめて書くこともできる。
+ * この分け方からは、基本機能と承認機能を段階的に追加して再利用しやすくする意図や、
+ * 宣言した関数の実装漏れをコンパイラで検出する利点が考えられる。
+ * ただし、作者が何を主目的にしたかは、このソースだけでは確認できない。
+ */
 contract ERC20Basic {
     // コントラクトの状態変数。値はストレージに保存され、継承先でも参照される。
     // public は外部から読み取るための getter を自動生成する。継承先で使える理由は getter ではなく、
@@ -94,6 +173,12 @@ contract ERC20Basic {
  * @title ERC20 interface
  * @dev see https://github.com/ethereum/EIPs/issues/20
  */
+/*
+ * ERC20 は ERC20Basic の宣言を引き継ぎ、承認と委任送金の関数を追加で宣言する。
+ * approve・allowance・transferFrom の本体は StandardToken にある。
+ * StandardToken も totalSupply は未実装なので、最終的な TetherToken が実装する。
+ * ERC20 も contract として宣言された抽象コントラクトであり、単体ではデプロイしない。
+ */
 contract ERC20 is ERC20Basic {
     function allowance(address owner, address spender) public constant returns (uint);
     function transferFrom(address from, address to, uint value) public;
@@ -104,6 +189,12 @@ contract ERC20 is ERC20Basic {
 /**
  * @title Basic token
  * @dev Basic version of StandardToken, with no allowances.
+ */
+/*
+ * BasicToken は残高の記録と、保有者本人が呼ぶ transfer の実装をまとめた土台。
+ * balanceOf で残高を読め、transfer では残高の更新と送金手数料の計算を行う。
+ * 他者に利用枠を与える approve や、その枠を使う transferFrom はここにはなく、
+ * BasicToken を継承する StandardToken が追加する。
  */
 contract BasicToken is Ownable, ERC20Basic {
     using SafeMath for uint;
@@ -184,6 +275,13 @@ contract BasicToken is Ownable, ERC20Basic {
  * @dev https://github.com/ethereum/EIPs/issues/20
  * @dev Based oncode by FirstBlood: https://github.com/Firstbloodio/token/blob/master/smart_contract/FirstBloodToken.sol
  */
+/*
+ * StandardToken は ERC-20 で使う承認と委任送金の実装をまとめた部品。
+ * BasicToken の直接送金に加え、approve で他者への利用枠を設定し、
+ * allowance で残額を確認し、transferFrom でその枠を使って送金する。
+ * TetherToken はこれを継承し、停止やブラックリストなどUSDT固有の処理を加える。
+ * 「Standard」は標準的な機能を表す名前で、ERC-20が要求するコントラクト名ではない。
+ */
 contract StandardToken is BasicToken, ERC20 {
 
     /*
@@ -239,12 +337,28 @@ contract StandardToken is BasicToken, ERC20 {
     * @param _spender The address which will spend the funds.
     * @param _value The amount of tokens to be spent.
     */
+    /*
+     * 承認を与える側は呼び出し元（msg.sender）、_spender は承認を受ける側。
+     * _spender が transferFrom で呼び出し元のトークンを使える上限を _value に設定する。
+     */
     function approve(address _spender, uint _value) public onlyPayloadSize(2 * 32) {
 
         // To change the approve amount you first have to reduce the addresses`
         //  allowance to zero by calling `approve(_spender, 0)` if it is not
         //  already 0 to mitigate the race condition described here:
         //  https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+        /*
+         * 既存の許可額が残っている状態で、別の非ゼロ額へ直接変更することを拒否する。
+         * 変更するときは、まず approve(_spender, 0) を確定させてから新しい額を設定する。
+         *
+         * 背景: 許可額100を50に変える取引が確定する前に、spenderが古い枠から100を
+         * 使い切ると、その後の approve で新たに50が設定され、合計150を使える。
+         * これは approve が許可残額を上書きすることと、取引の確定順が原因。
+         *
+         * この require だけで、その順序を完全に防げるわけではない。spenderが先に
+         * 古い枠を使い切ると、実行時の許可残額は0となり、この条件を通過する。
+         * 0への変更を確定させた後、古い枠の使用状況を確認して再承認する必要がある。
+         */
         require(!((_value != 0) && (allowed[msg.sender][_spender] != 0)));
 
         allowed[msg.sender][_spender] = _value;
@@ -267,6 +381,17 @@ contract StandardToken is BasicToken, ERC20 {
 /**
  * @title Pausable
  * @dev Base contract which allows children to implement an emergency stop mechanism.
+ */
+/*
+ * Pausable は paused 状態と、状態を確認する modifier を提供する。
+ * 継承しただけで全関数が停止するわけではなく、whenNotPaused を付けた関数だけが
+ * paused == true の間に実行を拒否される。
+ * このファイルでは TetherToken.transfer と transferFrom の両方に付いている。
+ * そのため停止中は、本人による送金も承認先による送金も拒否され、
+ * このコントラクトの通常のUSDT送金はすべて止まる。
+ * 一方、approve には付いていないため、
+ * 停止中でも承認額は設定できる（その承認を使う送金は再開まで実行できない）。
+ * pause / unpause は onlyOwner により owner だけが呼び出せる。
  */
 contract Pausable is Ownable {
   event Pause();
@@ -466,6 +591,7 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     }
 
     // Forward ERC20 methods to upgraded contract if this one is deprecated
+    /* ここでも _spender は承認を受ける側。承認を与えるのは呼び出し元（msg.sender）。 */
     function approve(address _spender, uint _value) public onlyPayloadSize(2 * 32) {
         if (deprecated) {
             return UpgradedStandardToken(upgradedAddress).approveByLegacy(msg.sender, _spender, _value);
