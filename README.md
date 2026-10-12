@@ -8,13 +8,13 @@ Ethereum Mainnet上のUSDTコントラクトを対象に、公開Solidityソー�
 
 - **ソースの構造**：ERC-20の基本機能に加え、送金手数料、停止、ブラックリスト、発行・償還、移行の実装と管理者権限を整理しました。
 - **デプロイ時の引数**：作成トランザクションの `input` をJSON-RPCから取得してデコードし、初期供給量・名前・シンボル・小数桁数を確認しました。
-- **Runtime Bytecode**：オンチェーンのコードと公開ソースからコンパイルしたコードを比較しました。ファイル全体は一致せず、末尾のメタデータ43バイトを除いた範囲で一致しています。
+- **公開ソースとチェーン上のコードの対応**：GitHubのソースを読む前に、オンチェーンのRuntime Bytecodeとソースをコンパイルした結果を比較しました。全体は一致せず、末尾のメタデータ43バイトを除いた実行コードが一致したため、このソースを以後の調査に使います。
 
 ## 調査ドキュメント
 
 1. [コントラクトの構造と機能](docs/01-architecture.md)
 2. [デプロイトランザクションとconstructor arguments](docs/02-deployment-arguments.md)
-3. [Runtime Bytecodeの比較と再現手順](docs/03-runtime-bytecode.md)
+3. [GitHubのUSDTソースはチェーン上のコードと対応するか](docs/03-runtime-bytecode.md)
 
 ## フォルダ構成
 
@@ -24,7 +24,7 @@ usdt-research/
 ├── docs/
 │   ├── 01-architecture.md            # ソースの構造と機能
 │   ├── 02-deployment-arguments.md    # デプロイ時の引数
-│   └── 03-runtime-bytecode.md        # バイトコード比較と再現手順
+│   └── 03-runtime-bytecode.md        # 公開ソースとチェーン上のコードの比較
 ├── source/
 │   └── TetherToken.sol               # 調査対象のソース
 ├── annotated/
