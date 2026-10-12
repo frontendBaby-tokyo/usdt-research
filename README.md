@@ -16,6 +16,10 @@ Ethereum Mainnet上のUSDTコントラクトを対象に、公開Solidityソー�
 2. [デプロイトランザクションとconstructor arguments](docs/02-deployment-arguments.md)
 3. [GitHubのUSDTソースはチェーン上のコードと対応するか](docs/03-runtime-bytecode.md)
 
+## USDTコントラクトのソースコードを読む
+
+[`annotated/TetherToken.sol`](annotated/TetherToken.sol) には、ソースを読みながら調べたことを解説コメントとして残しています。[比較に使った原本](source/TetherToken.sol) に対し、コメント以外のコードは変更していません。チェーン上のコードとの比較には原本を使用しています。
+
 ## フォルダ構成
 
 ```text
@@ -26,9 +30,9 @@ usdt-research/
 │   ├── 02-deployment-arguments.md    # デプロイ時の引数
 │   └── 03-runtime-bytecode.md        # 公開ソースとチェーン上のコードの比較
 ├── source/
-│   └── TetherToken.sol               # 調査対象のソース
+│   └── TetherToken.sol               # 比較に使う原本
 ├── annotated/
-│   └── TetherToken.sol               # 注釈付きソース
+│   └── TetherToken.sol               # 読みながら付けた解説コメント
 ├── scripts/                           # 取得・コンパイル・比較・デコード
 └── results/
     ├── usdt-onchain.hex              # オンチェーンのRuntime Bytecode
